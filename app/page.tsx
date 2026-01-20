@@ -42,7 +42,10 @@ export default function Home() {
         if (error) throw error;
 
         // Si la confirmación de email está desactivada, Supabase devuelve una sesión inmediatamente.
-        if (data.session) {
+        if (data.session && data.user) {
+          // Esperar a que el trigger de Supabase cree el árbol inicial
+          // El trigger se ejecuta automáticamente al crear el usuario
+          await new Promise(resolve => setTimeout(resolve, 1500));
           router.push("/tree");
         } else {
           // Solo mostramos esto si NO se creó la sesión (es decir, si Supabase pidió confirmar)

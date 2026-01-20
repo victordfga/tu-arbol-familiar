@@ -11,6 +11,7 @@ export default function TreePage() {
     const router = useRouter();
     const supabase = createClient();
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const [rootNode, setRootNode] = useState<PersonNode | null>(null);
 
     useEffect(() => {
@@ -22,16 +23,35 @@ export default function TreePage() {
                 return;
             }
 
-            // 2. Find User's Tree
-            const { data: memberData, error: memberError } = await supabase
-                .from("tree_members")
-                .select("tree_id")
-                .eq("user_id", user.id)
-                .single();
+            // 2. Find User's Tree with Retry Logic
+            // Sometimes there's a small delay in data propagation
+            let memberData = null;
+            let attempts = 0;
+            const maxAttempts = 3;
 
-            if (memberError || !memberData) {
-                console.error("No tree found for user");
-                // Handle case where user has no tree (shouldn't happen due to trigger)
+            while (attempts < maxAttempts && !memberData) {
+                const { data, error } = await supabase
+                    .from("tree_members")
+                    .select("tree_id")
+                    .eq("user_id", user.id)
+                    .maybeSingle();
+
+                if (data) {
+                    memberData = data;
+                    break;
+                }
+
+                attempts++;
+                if (attempts < maxAttempts) {
+                    // Wait before retrying: 500ms, 1s, 1.5s, 2s
+                    await new Promise(resolve => setTimeout(resolve, 500 * attempts));
+                }
+            }
+
+            if (!memberData) {
+                console.error("No tree found for user after", maxAttempts, "attempts");
+                setError("No se pudo cargar tu árbol familiar. Por favor, recarga la página.");
+                setLoading(false);
                 return;
             }
 
@@ -43,6 +63,8 @@ export default function TreePage() {
 
             if (peopleError) {
                 console.error("Error fetching people", peopleError);
+                setError("Error al cargar los miembros del árbol.");
+                setLoading(false);
                 return;
             }
 
@@ -61,6 +83,26 @@ export default function TreePage() {
         return (
             <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background-light dark:bg-background-dark p-4">
+                <div className="text-center max-w-md">
+                    <div className="text-red-500 mb-4">
+                        <span className="material-symbols-outlined text-5xl">error</span>
+                    </div>
+                    <h2 className="text-xl font-bold text-[#0d141b] dark:text-white mb-2">Error al cargar</h2>
+                    <p className="text-[#4c739a] dark:text-slate-400 mb-6">{error}</p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="bg-primary text-white px-6 py-3 rounded-xl font-semibold hover:bg-primary/90"
+                    >
+                        Reintentar
+                    </button>
+                </div>
             </div>
         );
     }
